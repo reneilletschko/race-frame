@@ -5,53 +5,58 @@
 #include <WiFiManager.h>
 #include <Preferences.h>
 
-// ================= NeoPixel =================
-#define PIN_NEO_PIXEL 21
-#define NUM_PIXELS 1
-Adafruit_NeoPixel NeoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
+// ===================== NeoPixel =====================
+constexpr uint8_t PIN_NEO_PIXEL = 21;
+constexpr uint8_t NUM_PIXELS    = 1;
 
-// ================= OTA URLs (FIX) =================
-const char* firmwareUrl = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin";
-const char* versionUrl  = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version.txt";
+Adafruit_NeoPixel neoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
 
-// ================= Firmware Version =================
-const char* currentFirmwareVersion = "1.6";
-const unsigned long updateCheckInterval = 5 * 60 * 1000;
-unsigned long lastUpdateCheck = 0;
+// ===================== Firmware =====================
+constexpr char FIRMWARE_URL[] = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin";
+constexpr char VERSION_URL[]  = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version.txt";
+constexpr char CURRENT_FIRMWARE_VERSION[] = "1.6";
 
-// ================= WiFi / NVS =================
-WiFiManager wm;
-Preferences prefs;
+// ===================== Timing =====================
+constexpr unsigned long UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+constexpr uint16_t LED_BLINK_MS = 250;
+constexpr uint16_t RESET_WINDOW_MS = 4000;
 
-// ================= LED Helper =================
-void setLED(uint8_t r, uint8_t g, uint8_t b) {
-  NeoPixel.setPixelColor(0, NeoPixel.Color(r, g, b));
-  NeoPixel.show();
+// ===================== Globals =====================
+WiFiManager g_wifiManager;
+Preferences g_prefs;
+
+unsigned long g_lastUpdateCheck = 0;
+
+// ===================== LED Helpers =====================
+void setLedColor(uint8_t r, uint8_t g, uint8_t b) {
+  neoPixel.setPixelColor(0, neoPixel.Color(r, g, b));
+  neoPixel.show();
 }
 
-void blinkLED(uint8_t r, uint8_t g, uint8_t b, int d=300) {
-  setLED(r,g,b); delay(d);
-  setLED(0,0,0); delay(d);
+void blinkLed(uint8_t r, uint8_t g, uint8_t b, uint16_t delayMs = LED_BLINK_MS) {
+  setLedColor(r, g, b);
+  delay(delayMs);
+  setLedColor(0, 0, 0);
+  delay(delayMs);
 }
 
-// ===================================================
-// =============== FACTORY RESET (3x Reset) =========
-// ===================================================
-void checkFactoryReset() {
-  prefs.begin("boot", false);
-  int bootCount = prefs.getInt("boots", 0);
+// ===================== Factory Reset =====================
+void handleFactoryReset() {
+  g_prefs.begin("boot", false);
+
+  int bootCount = g_prefs.getInt("boots", 0);
   bootCount++;
-  prefs.putInt("boots", bootCount);
+  g_prefs.putInt("boots", bootCount);
 
   if (bootCount >= 3) {
-    for(int i=0;i<10;i++) blinkLED(255,0,0,100); // Rot schnell
+    for (int i = 0; i < 10; i++) blinkLed(255, 0, 0, 100);
 
-    prefs.end();
+    g_prefs.end();
 
-    Preferences clearPrefs;
-    clearPrefs.begin("config", false);
-    clearPrefs.clear();
-    clearPrefs.end();
+    Preferences clearConfig;
+    clearConfig.begin("config", false);
+    clearConfig.clear();
+    clearConfig.end();
 
     Preferences clearBoot;
     clearBoot.begin("boot", false);
@@ -61,62 +66,58 @@ void checkFactoryReset() {
     ESP.restart();
   }
 
-  delay(4000);
-  prefs.putInt("boots", 0);
-  prefs.end();
+  delay(RESET_WINDOW_MS);
+  g_prefs.putInt("boots", 0);
+  g_prefs.end();
 }
 
-// ===================================================
-// ================= WiFi Setup ======================
-// ===================================================
-void setupWiFi() {
-  prefs.begin("config", false);
-  String ssid = prefs.getString("ssid", "");
-  String pass = prefs.getString("pass", "");
+// ===================== WiFi Setup =====================
+void initWifi() {
+  g_prefs.begin("config", false);
 
-  if (ssid == "") {
-    // 🔵 Captive Portal
-    while (true) {
-      blinkLED(0,0,255,200);
-      if (wm.autoConnect("RaceFrame-Setup")) break;
-    }
+  String ssid = g_prefs.getString("ssid", "");
+  String pass = g_prefs.getString("pass", "");
 
-    prefs.putString("ssid", WiFi.SSID());
-    prefs.putString("pass", WiFi.psk());
+  if (ssid.isEmpty()) {
+    setLedColor(0, 0, 255); // Blau = Captive Portal
+    g_wifiManager.autoConnect("RaceFrame-Setup");
+
+    g_prefs.putString("ssid", WiFi.SSID());
+    g_prefs.putString("pass", WiFi.psk());
+
     delay(1000);
     ESP.restart();
   }
 
-  // 🟡 Verbinden
   WiFi.begin(ssid.c_str(), pass.c_str());
+
   while (WiFi.status() != WL_CONNECTED) {
-    blinkLED(255,180,0,300);
+    blinkLed(255, 180, 0); // Gelb = Verbinden
   }
 
-  // 🟢 Verbunden
-  for(int i=0;i<3;i++) blinkLED(0,255,0,200);
+  for (int i = 0; i < 3; i++) blinkLed(0, 255, 0, 150); // Grün = Verbunden
 
-  prefs.end();
+  g_prefs.end();
 }
 
-// ===================================================
-// ================= OTA FUNCTIONS ===================
-// ===================================================
+// ===================== OTA =====================
 String fetchLatestVersion() {
   HTTPClient http;
-  http.begin(versionUrl);
+  http.begin(VERSION_URL);
+
   int httpCode = http.GET();
   if (httpCode == HTTP_CODE_OK) {
-    String latestVersion = http.getString();
-    latestVersion.trim();
+    String version = http.getString();
+    version.trim();
     http.end();
-    return latestVersion;
+    return version;
   }
+
   http.end();
   return "";
 }
 
-bool startOTAUpdate(WiFiClient* client, int contentLength) {
+bool startOtaUpdate(WiFiClient* client, int contentLength) {
   if (!Update.begin(contentLength)) return false;
 
   size_t written = 0;
@@ -128,69 +129,61 @@ bool startOTAUpdate(WiFiClient* client, int contentLength) {
       if (len > 0) {
         Update.write(buffer, len);
         written += len;
-        // 🟣 OTA läuft
-        setLED(180,0,255);
+        setLedColor(180, 0, 255); // Lila = OTA
       }
     }
     yield();
   }
 
-  if (!Update.end()) return false;
-  return true;
+  return Update.end();
 }
 
-void downloadAndApplyFirmware() {
+void performOtaUpdate() {
   HTTPClient http;
-  http.begin(firmwareUrl);
+  http.begin(FIRMWARE_URL);
 
   int httpCode = http.GET();
   if (httpCode == HTTP_CODE_OK) {
     int contentLength = http.getSize();
     if (contentLength > 0) {
       WiFiClient* stream = http.getStreamPtr();
-      if (startOTAUpdate(stream, contentLength)) {
+      if (startOtaUpdate(stream, contentLength)) {
         delay(2000);
         ESP.restart();
       }
     }
   }
+
   http.end();
 }
 
-void checkForFirmwareUpdate() {
+void checkForOtaUpdate() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   String latestVersion = fetchLatestVersion();
-  if (latestVersion == "") return;
+  if (latestVersion.isEmpty()) return;
 
-  if (latestVersion != currentFirmwareVersion) {
-    downloadAndApplyFirmware();
+  if (latestVersion != CURRENT_FIRMWARE_VERSION) {
+    performOtaUpdate();
   }
 }
 
-// ===================================================
-// ================== SETUP ==========================
-// ===================================================
+// ===================== Setup =====================
 void setup() {
-  NeoPixel.begin();
+  neoPixel.begin();
   Serial.begin(115200);
 
-  checkFactoryReset();
-  setupWiFi();
-
-  checkForFirmwareUpdate();
+  handleFactoryReset();
+  initWifi();
+  checkForOtaUpdate();
 }
 
-// ===================================================
-// =================== LOOP ==========================
-// ===================================================
+// ===================== Loop =====================
 void loop() {
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastUpdateCheck >= updateCheckInterval) {
-    lastUpdateCheck = currentMillis;
-    checkForFirmwareUpdate();
+  if (millis() - g_lastUpdateCheck >= UPDATE_CHECK_INTERVAL_MS) {
+    g_lastUpdateCheck = millis();
+    checkForOtaUpdate();
   }
 
-  // 🟢 Normalbetrieb
-  blinkLED(0,255,0,500);
+  blinkLed(0, 255, 0, 500); // Grün = Normalbetrieb
 }
