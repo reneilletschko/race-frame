@@ -3,7 +3,7 @@
 #include <Update.h>
 
 // WiFi credentials
-const char* ssid = "IT Hurts When IP"; // put your wifi name
+const char* ssid = "It Hurts When IP"; // put your wifi name
 const char* password = "Hurenbengel88"; // put your wifi password
 
 const char* firmwareUrl = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin"; //https://github.com/ittipu/esp32_firmware/releases/download/esp32_firmware/firmware.ino.bin
@@ -11,7 +11,7 @@ const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-
 
 
 // Current firmware version
-const char* currentFirmwareVersion = "1.1";
+const char* currentFirmwareVersion = "1.2";
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
 unsigned long lastUpdateCheck = 0;
 
@@ -170,13 +170,13 @@ void checkForFirmwareUpdate() {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(3000);
   Serial.println("\nStarting ESP32 OTA Update");
 
-  //connectToWiFi();
-  //Serial.println("Device is ready.");
-  //Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
-  //checkForFirmwareUpdate();
+  connectToWiFi();
+  Serial.println("Device is ready.");
+  Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
+  checkForFirmwareUpdate();
 }
 
 void loop() {
