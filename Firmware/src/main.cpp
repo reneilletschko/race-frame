@@ -11,7 +11,7 @@ const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-
 
 
 // Current firmware version
-const char* currentFirmwareVersion = "1.2";
+const char* currentFirmwareVersion = "1.3";
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
 unsigned long lastUpdateCheck = 0;
 
@@ -170,7 +170,7 @@ void checkForFirmwareUpdate() {
 
 void setup() {
   Serial.begin(115200);
-  delay(3000);
+  delay(10000);
   Serial.println("\nStarting ESP32 OTA Update");
 
   connectToWiFi();
