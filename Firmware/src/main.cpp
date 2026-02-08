@@ -1,6 +1,13 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <Update.h>
+#include <Adafruit_NeoPixel.h>
+
+
+//NeoPixel
+#define PIN_NEO_PIXEL  20  // The ESP32 pin GPIO16 connected to NeoPixel
+#define NUM_PIXELS     1  // The number of LEDs (pixels) on NeoPixel
+Adafruit_NeoPixel NeoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
 
 // WiFi credentials
 const char* ssid = "It Hurts When IP"; // put your wifi name
@@ -175,10 +182,13 @@ void setup() {
   Serial.println("Device is ready.");
   Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
   checkForFirmwareUpdate();
+  NeoPixel.begin();
 }
 
 void loop() {
-  Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
-  delay(3000);  // delay to prevent flooding serial
+  NeoPixel.setPixelColor(0, NeoPixel.Color(255, 0, 0));
+  delay(1000);  // delay to prevent flooding serial
+  NeoPixel.setPixelColor(0, NeoPixel.Color(0, 255, 0));
+  delay(1000);  // delay to prevent flooding serial
 }
 
