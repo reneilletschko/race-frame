@@ -188,6 +188,7 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - lastUpdateCheck >= updateCheckInterval) {
+    lastUpdateCheck = currentMillis;
       checkForFirmwareUpdate();}
   NeoPixel.setPixelColor(0, NeoPixel.Color(0, 255, 0));
   NeoPixel.show();
