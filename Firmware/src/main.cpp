@@ -7,7 +7,7 @@ const char* ssid = "IT Hurts When IP"; // put your wifi name
 const char* password = "Hurenbengel88"; // put your wifi password
 
 const char* firmwareUrl = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin"; //https://github.com/ittipu/esp32_firmware/releases/download/esp32_firmware/firmware.ino.bin
-const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version.txt"; //https://raw.githubusercontent.com/ittipu/esp32_firmware/refs/heads/main/version.txt
+const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version"; //https://raw.githubusercontent.com/ittipu/esp32_firmware/refs/heads/main/version.txt
 
 
 // Current firmware version
