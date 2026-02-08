@@ -5,7 +5,7 @@
 
 
 //NeoPixel
-#define PIN_NEO_PIXEL  20  // The ESP32 pin GPIO16 connected to NeoPixel
+#define PIN_NEO_PIXEL  21  // The ESP32 pin GPIO16 connected to NeoPixel
 #define NUM_PIXELS     1  // The number of LEDs (pixels) on NeoPixel
 Adafruit_NeoPixel NeoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
 
@@ -18,7 +18,7 @@ const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-
 
 
 // Current firmware version
-const char* currentFirmwareVersion = "1.4";
+const char* currentFirmwareVersion = "1.5";
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
 unsigned long lastUpdateCheck = 0;
 
@@ -186,9 +186,11 @@ void setup() {
 }
 
 void loop() {
-  NeoPixel.setPixelColor(0, NeoPixel.Color(255, 0, 0));
-  delay(1000);  // delay to prevent flooding serial
   NeoPixel.setPixelColor(0, NeoPixel.Color(0, 255, 0));
+  NeoPixel.show();
+  delay(1000);  // delay to prevent flooding serial
+  NeoPixel.setPixelColor(0, NeoPixel.Color(0, 0, 0));
+  NeoPixel.show();
   delay(1000);  // delay to prevent flooding serial
 }
 
