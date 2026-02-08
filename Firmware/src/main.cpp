@@ -11,7 +11,7 @@ const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-
 
 
 // Current firmware version
-const char* currentFirmwareVersion = "1.3";
+const char* currentFirmwareVersion = "1.4";
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
 unsigned long lastUpdateCheck = 0;
 
@@ -23,11 +23,9 @@ unsigned long lastUpdateCheck = 0;
 String fetchLatestVersion() {
   HTTPClient http;
   http.begin(versionUrl);
-
   int httpCode = http.GET();
   if (httpCode == HTTP_CODE_OK) {
     String latestVersion = http.getString();
-    Serial.println(http.getString());
     latestVersion.trim();  // Remove any extra whitespace
     http.end();
     return latestVersion;
@@ -150,7 +148,6 @@ void checkForFirmwareUpdate() {
     Serial.println("Failed to fetch latest version");
     return;
   }
-
   Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
   Serial.println("Latest Firmware Version: " + latestVersion);
 
