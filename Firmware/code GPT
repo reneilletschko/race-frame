@@ -1,0 +1,196 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <Update.h>
+#include <Adafruit_NeoPixel.h>
+#include <WiFiManager.h>
+#include <Preferences.h>
+
+// ================= NeoPixel =================
+#define PIN_NEO_PIXEL 21
+#define NUM_PIXELS 1
+Adafruit_NeoPixel NeoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
+
+// ================= OTA URLs (FIX) =================
+const char* firmwareUrl = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin";
+const char* versionUrl  = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version.txt";
+
+// ================= Firmware Version =================
+const char* currentFirmwareVersion = "1.6";
+const unsigned long updateCheckInterval = 5 * 60 * 1000;
+unsigned long lastUpdateCheck = 0;
+
+// ================= WiFi / NVS =================
+WiFiManager wm;
+Preferences prefs;
+
+// ================= LED Helper =================
+void setLED(uint8_t r, uint8_t g, uint8_t b) {
+  NeoPixel.setPixelColor(0, NeoPixel.Color(r, g, b));
+  NeoPixel.show();
+}
+
+void blinkLED(uint8_t r, uint8_t g, uint8_t b, int d=300) {
+  setLED(r,g,b); delay(d);
+  setLED(0,0,0); delay(d);
+}
+
+// ===================================================
+// =============== FACTORY RESET (3x Reset) =========
+// ===================================================
+void checkFactoryReset() {
+  prefs.begin("boot", false);
+  int bootCount = prefs.getInt("boots", 0);
+  bootCount++;
+  prefs.putInt("boots", bootCount);
+
+  if (bootCount >= 3) {
+    for(int i=0;i<10;i++) blinkLED(255,0,0,100); // Rot schnell
+
+    prefs.end();
+
+    Preferences clearPrefs;
+    clearPrefs.begin("config", false);
+    clearPrefs.clear();
+    clearPrefs.end();
+
+    Preferences clearBoot;
+    clearBoot.begin("boot", false);
+    clearBoot.clear();
+    clearBoot.end();
+
+    ESP.restart();
+  }
+
+  delay(4000);
+  prefs.putInt("boots", 0);
+  prefs.end();
+}
+
+// ===================================================
+// ================= WiFi Setup ======================
+// ===================================================
+void setupWiFi() {
+  prefs.begin("config", false);
+  String ssid = prefs.getString("ssid", "");
+  String pass = prefs.getString("pass", "");
+
+  if (ssid == "") {
+    // 🔵 Captive Portal
+    while (true) {
+      blinkLED(0,0,255,200);
+      if (wm.autoConnect("RaceFrame-Setup")) break;
+    }
+
+    prefs.putString("ssid", WiFi.SSID());
+    prefs.putString("pass", WiFi.psk());
+    delay(1000);
+    ESP.restart();
+  }
+
+  // 🟡 Verbinden
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  while (WiFi.status() != WL_CONNECTED) {
+    blinkLED(255,180,0,300);
+  }
+
+  // 🟢 Verbunden
+  for(int i=0;i<3;i++) blinkLED(0,255,0,200);
+
+  prefs.end();
+}
+
+// ===================================================
+// ================= OTA FUNCTIONS ===================
+// ===================================================
+String fetchLatestVersion() {
+  HTTPClient http;
+  http.begin(versionUrl);
+  int httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK) {
+    String latestVersion = http.getString();
+    latestVersion.trim();
+    http.end();
+    return latestVersion;
+  }
+  http.end();
+  return "";
+}
+
+bool startOTAUpdate(WiFiClient* client, int contentLength) {
+  if (!Update.begin(contentLength)) return false;
+
+  size_t written = 0;
+
+  while (written < contentLength) {
+    if (client->available()) {
+      uint8_t buffer[128];
+      size_t len = client->read(buffer, sizeof(buffer));
+      if (len > 0) {
+        Update.write(buffer, len);
+        written += len;
+        // 🟣 OTA läuft
+        setLED(180,0,255);
+      }
+    }
+    yield();
+  }
+
+  if (!Update.end()) return false;
+  return true;
+}
+
+void downloadAndApplyFirmware() {
+  HTTPClient http;
+  http.begin(firmwareUrl);
+
+  int httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK) {
+    int contentLength = http.getSize();
+    if (contentLength > 0) {
+      WiFiClient* stream = http.getStreamPtr();
+      if (startOTAUpdate(stream, contentLength)) {
+        delay(2000);
+        ESP.restart();
+      }
+    }
+  }
+  http.end();
+}
+
+void checkForFirmwareUpdate() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  String latestVersion = fetchLatestVersion();
+  if (latestVersion == "") return;
+
+  if (latestVersion != currentFirmwareVersion) {
+    downloadAndApplyFirmware();
+  }
+}
+
+// ===================================================
+// ================== SETUP ==========================
+// ===================================================
+void setup() {
+  NeoPixel.begin();
+  Serial.begin(115200);
+
+  checkFactoryReset();
+  setupWiFi();
+
+  checkForFirmwareUpdate();
+}
+
+// ===================================================
+// =================== LOOP ==========================
+// ===================================================
+void loop() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastUpdateCheck >= updateCheckInterval) {
+    lastUpdateCheck = currentMillis;
+    checkForFirmwareUpdate();
+  }
+
+  // 🟢 Normalbetrieb
+  blinkLED(0,255,0,500);
+}
