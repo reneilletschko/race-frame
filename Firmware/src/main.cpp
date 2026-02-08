@@ -18,7 +18,7 @@ const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-
 
 
 // Current firmware version
-const char* currentFirmwareVersion = "1.5";
+const char* currentFirmwareVersion = "1.6";
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
 unsigned long lastUpdateCheck = 0;
 
@@ -191,9 +191,9 @@ void loop() {
       checkForFirmwareUpdate();}
   NeoPixel.setPixelColor(0, NeoPixel.Color(0, 255, 0));
   NeoPixel.show();
-  delay(1000);  // delay to prevent flooding serial
+  delay(100);  // delay to prevent flooding serial
   NeoPixel.setPixelColor(0, NeoPixel.Color(0, 0, 0));
   NeoPixel.show();
-  delay(1000);  // delay to prevent flooding serial
+  delay(100);  // delay to prevent flooding serial
 }
 
