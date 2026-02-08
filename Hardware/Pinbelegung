@@ -1,0 +1,15 @@
+PIN	    Funktion
+GP1	    LedStrip_Data
+GP2	    Frei
+GP3	
+GP4	    Blockiert
+GP5	    Blockiert
+GP6	    Blockiert
+GP7	    Blockiert
+GP8	    Blockiert
+GP9     Blockiert
+GP10	Blockiert
+GP11	Display_LOAD
+GP12	Display_CLK
+GP13	Display_DataIn
+GB21	Eingebaute WS2810 LED
