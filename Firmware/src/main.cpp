@@ -16,7 +16,7 @@ constexpr unsigned long RESET_HOLD_MS = 5000; // Zeit bis Reset ausgelöst wird 
 constexpr unsigned long BOOT_IGNORE_MS = 3000; // GPIO0 beim Boot ignorieren
 
 // ===================== Firmware =====================
-const char* currentFirmwareVersion = "1.7";
+const char* currentFirmwareVersion = "1.8";
 const char* firmwareUrl = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin"; //https://github.com/ittipu/esp32_firmware/releases/download/esp32_firmware/firmware.ino.bin
 const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version.txt"; //https://raw.githubusercontent.com/ittipu/esp32_firmware/refs/heads/main/version.txt
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
@@ -333,6 +333,12 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - lastUpdateCheck >= updateCheckInterval) {
     lastUpdateCheck = currentMillis;
-      checkForFirmwareUpdate();}
+    checkForFirmwareUpdate();}
+  setLed(255, 0, 0);
+  delay(500);
+  setLed(0, 255, 0);
+  delay(500);
+  setLed(0, 0, 255);
+  delay(500);
 
 }
