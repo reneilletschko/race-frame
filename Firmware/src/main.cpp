@@ -1,32 +1,55 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <Update.h>
 #include <Adafruit_NeoPixel.h>
+#include <WiFiManager.h>
+#include <Preferences.h>
 
+// ===================== Hardware =====================
+constexpr uint8_t PIN_NEO_PIXEL = 21;
+constexpr uint8_t NUM_PIXELS    = 1;
+constexpr uint8_t RESET_BUTTON_PIN = 0;   // Boot-Taste (GPIO0) für Factory Reset verwenden
 
-//NeoPixel
-#define PIN_NEO_PIXEL  21  // The ESP32 pin GPIO16 connected to NeoPixel
-#define NUM_PIXELS     1  // The number of LEDs (pixels) on NeoPixel
-Adafruit_NeoPixel NeoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
+// ===================== Timing =====================
+constexpr unsigned long RESET_HOLD_MS = 5000; // Zeit bis Reset ausgelöst wird (5 Sekunden)
+constexpr unsigned long BOOT_IGNORE_MS = 3000; // GPIO0 beim Boot ignorieren
 
-// WiFi credentials
-const char* ssid = "It Hurts When IP"; // put your wifi name
-const char* password = "Hurenbengel88"; // put your wifi password
-
+// ===================== Firmware =====================
+const char* currentFirmwareVersion = "1.6";
 const char* firmwareUrl = "https://github.com/reneilletschko/race-frame/releases/download/updates/firmware.bin"; //https://github.com/ittipu/esp32_firmware/releases/download/esp32_firmware/firmware.ino.bin
 const char* versionUrl = "https://raw.githubusercontent.com/reneilletschko/race-frame/refs/heads/main/Firmware/version.txt"; //https://raw.githubusercontent.com/ittipu/esp32_firmware/refs/heads/main/version.txt
-
-
-// Current firmware version
-const char* currentFirmwareVersion = "1.6";
 const unsigned long updateCheckInterval = 5 * 60 * 1000;  // 5 minutes in milliseconds
 unsigned long lastUpdateCheck = 0;
 
+// ===================== Globals =====================
+Adafruit_NeoPixel neoPixel(NUM_PIXELS, PIN_NEO_PIXEL, NEO_GRB + NEO_KHZ800);
+WiFiManager wm;
+Preferences prefs;
 
-#pragma region Functions
+// ===================== Custom Config =====================
+char cfgUser[32] = "";  //Platzhalter für Benutzername RaceBox Website
+char cfgPass[32] = ""; //Platzhalter für Passwort RaceBox Website
 
+// ===================== Reset Button =====================
+unsigned long resetPressStart = 0;
+bool resetTriggered = false;
+unsigned long bootTime = 0;
 
+// ===================== WiFiManager Parameters =====================
+WiFiManagerParameter paramUser(
+  "user", "User", cfgUser, sizeof(cfgUser)
+);
 
+WiFiManagerParameter paramPass(
+  "pass",
+  "Password",
+  cfgPass,
+  sizeof(cfgPass),
+  "type=\"password\""
+);
+
+// ===================== OTA Updater =====================
 String fetchLatestVersion() {
   HTTPClient http;
   http.begin(versionUrl);
@@ -81,7 +104,6 @@ bool startOTAUpdate(WiFiClient* client, int contentLength) {
       Update.abort();
       return false;
     }
-
     yield();
   }
   Serial.println("\nWriting complete");
@@ -131,17 +153,6 @@ void downloadAndApplyFirmware() {
   http.end();
 }
 
-void connectToWiFi() {
-  Serial.print("Connecting to WiFi");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected");
-  Serial.println("IP address: " + WiFi.localIP().toString());
-}
-
 void checkForFirmwareUpdate() {
   Serial.println("Checking for firmware update...");
   if (WiFi.status() != WL_CONNECTED) {
@@ -167,34 +178,161 @@ void checkForFirmwareUpdate() {
   }
 }
 
+// ===================== LED Helper =====================
+void setLed(uint8_t r, uint8_t g, uint8_t b) {
+  neoPixel.setPixelColor(0, neoPixel.Color(r, g, b));
+  neoPixel.show();
+}
 
+// ===================== Preferences =====================
+void loadCustomParams() {
+  prefs.begin("config", true);
+  prefs.getString("user", cfgUser, sizeof(cfgUser));
+  prefs.getString("pass", cfgPass, sizeof(cfgPass));
+  prefs.end();
 
-#pragma endregion
+  Serial.printf("User geladen: %s\n", cfgUser);
+}
 
+void saveCustomParams() {
+  prefs.begin("config", false);
+  prefs.putString("user", cfgUser);
+  prefs.putString("pass", cfgPass);
+  prefs.end();
 
+  Serial.println("Custom Config gespeichert");
+}
 
+// ===================== Factory Reset =====================
+void factoryReset() {
+  Serial.println("FACTORY RESET");
+
+  setLed(255, 0, 0);
+
+  prefs.begin("config", false);
+  prefs.clear();
+  prefs.end();
+
+  wm.resetSettings();
+
+  delay(1000);
+  ESP.restart();
+}
+
+// ===================== Validation =====================
+bool validateCustomParams() {
+  if (strlen(cfgUser) == 0 || strlen(cfgPass) == 0) {
+    Serial.println("Validierung fehlgeschlagen: Felder dürfen nicht leer sein");
+    factoryReset();
+    return false;
+  }
+  return true;
+}
+
+// ===================== WiFiManager Callback =====================
+void saveConfigCallback() {
+  Serial.println("Config Portal gespeichert");
+
+  strncpy(cfgUser, paramUser.getValue(), sizeof(cfgUser));
+  strncpy(cfgPass, paramPass.getValue(), sizeof(cfgPass));
+
+  if (!validateCustomParams()) {
+    Serial.println("Ungültige Eingabe → Portal erneut");
+    delay(1000);
+    wm.startConfigPortal("RaceFrame-Setup");
+    return;
+  }
+
+  saveCustomParams();
+}
+
+// ===================== WiFi Init =====================
+void initWiFi() {
+  loadCustomParams();
+
+  wm.setShowInfoErase(false);
+  wm.setShowInfoUpdate(false);
+  wm.setBreakAfterConfig(true);
+  wm.setConfigPortalBlocking(true);
+  wm.setSaveConfigCallback(saveConfigCallback);
+
+  wm.addParameter(&paramUser);
+  wm.addParameter(&paramPass);
+
+  Serial.println("Starte WiFi / Config Portal");
+  setLed(0, 0, 255); // Blau
+
+  if (!wm.autoConnect("RaceFrame-Setup")) {
+    Serial.println("WLAN Verbindung fehlgeschlagen");
+    ESP.restart();
+  }
+
+  Serial.print("WLAN verbunden, IP: ");
+  Serial.println(WiFi.localIP());
+  setLed(0, 255, 0); // Grün
+}
+
+// ===================== Reset Button Handler =====================
+void handleResetButton() {
+  // GPIO0 in den ersten Sekunden ignorieren
+  if (millis() - bootTime < BOOT_IGNORE_MS) return;
+
+  bool pressed = digitalRead(RESET_BUTTON_PIN) == LOW;
+
+  if (pressed && resetPressStart == 0) {
+    resetPressStart = millis();
+    Serial.println("Reset-Taste (GPIO0) gedrückt...");
+  }
+
+  if (pressed && !resetTriggered) {
+    unsigned long held = millis() - resetPressStart;
+
+    if (held >= RESET_HOLD_MS) {
+      resetTriggered = true;
+      factoryReset();
+    } else {
+      // LED blinkt rot während gedrückt halten
+      if ((millis() / 300) % 2 == 0) { // Blinken alle 300ms
+        setLed(255, 0, 0);
+      } else {
+        setLed(0, 0, 0);
+      }
+
+      Serial.printf("Reset in %lu ms\n", RESET_HOLD_MS - held);
+    }
+  }
+
+  if (!pressed) {
+    resetPressStart = 0;
+    resetTriggered = false;
+  }
+}
+
+// ===================== Setup & Loop =====================
 void setup() {
   Serial.begin(115200);
-  delay(10000);
-  Serial.println("\nStarting ESP32 OTA Update");
 
-  connectToWiFi();
-  Serial.println("Device is ready.");
+  delay(10000); // Zeit für seriellen Monitor, um sich zu verbinden und Boot-Logs zu sehen
+  neoPixel.begin();
+  setLed(0, 0, 0);
+
+  pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
+  bootTime = millis();
+
+  Serial.println("\n=== RaceFrame Boot ===");
   Serial.println("Current Firmware Version: " + String(currentFirmwareVersion));
+  Serial.println("GPIO0 wird als Reset-Taste verwendet");
+
+  initWiFi();
+
   checkForFirmwareUpdate();
-  NeoPixel.begin();
 }
 
 void loop() {
+  handleResetButton();
   unsigned long currentMillis = millis();
   if (currentMillis - lastUpdateCheck >= updateCheckInterval) {
     lastUpdateCheck = currentMillis;
       checkForFirmwareUpdate();}
-  NeoPixel.setPixelColor(0, NeoPixel.Color(0, 255, 0));
-  NeoPixel.show();
-  delay(100);  // delay to prevent flooding serial
-  NeoPixel.setPixelColor(0, NeoPixel.Color(0, 0, 0));
-  NeoPixel.show();
-  delay(100);  // delay to prevent flooding serial
-}
 
+}
